@@ -3,8 +3,9 @@ require("dotenv").config();
 import mongoose from "mongoose";
 import { Telegraf, session } from "telegraf";
 import UsersController from "./controller/users.ctrl";
-import { DownloaderUtils } from "./utils/downloader";
-import { MyContext } from "./interfaces";
+import { YoutubeHelper } from "./helper/youtube";
+import { MyContext, MyContextUpdate } from "./interfaces";
+import { Filter } from "ytdl-core";
 
 const userCtrl = new UsersController();
 
@@ -16,41 +17,144 @@ bot.start(userCtrl.startBot);
 
 bot.command("download", (ctx: MyContext) => {
   ctx.reply("send me your link :D");
-  ctx.session ??= { isWaitingForLink: true };
+  ctx.session ??= { isWaitingForLink: true, isWaitingForType: false };
 });
 
 bot.on("text", async (ctx: MyContext) => {
+  const { text }: any | string = ctx.message;
+
   if (ctx.session?.isWaitingForLink) {
-    ctx.session ??= { isWaitingForLink: false };
+    ctx.session ??= {
+      isWaitingForLink: false,
+      isWaitingForType: true,
+    };
 
-    const { text }: any = ctx.message;
+    const isValid = YoutubeHelper.isUrlValid(text);
 
-    
+    if (isValid) {
+      const videoInfo = await YoutubeHelper.getInfo(text);
+      const title = videoInfo.videoDetails.title;
+      const videoID = YoutubeHelper.getID(text);
+      // Selection Function
 
-    const dlMsg = await ctx.reply("Download...");
-
-    await DownloaderUtils.mp3(text).then(async (val) => {
-      ctx.deleteMessage(dlMsg.message_id);
-      console.log();
-      const path = val?.toString();
-      
-      const id = await ctx.replyWithAudio(
+      console.log(typeof text, text);
+      const qualitySelector = ctx.replyWithHTML(
+        `
+      🎶 <b>${videoInfo.videoDetails.title}</b>
+<i>Which format do you want? </i>
+      `,
         {
-          source: path,
-        },
-        {
-          caption: "Please forward it, i will be deleted after 30 seconds",
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "Highest Quality ( Video )",
+                  callback_data: String(`highestvideo|${videoID}`),
+                },
+                {
+                  text: "Lowest Quality ( Video )",
+                  callback_data: `lowestvideo|${videoID}`,
+                },
+              ],
+              [
+                {
+                  text: "Highest Quality ( Audio )",
+                  callback_data: `highestaudio|${videoID}`,
+                },
+                {
+                  text: "Lowest Quality ( Audio )",
+                  callback_data: `lowestaudio|${videoID}`,
+                },
+              ],
+            ],
+          },
         }
       );
-
-      setTimeout(() => {
-        ctx.deleteMessage(id.message_id);
-      }, 30000);
-    });
+    } else {
+      ctx.reply("Youtube link is not valid!");
+    }
   }
 });
 
-bot.action("delete", (ctx) => ctx.deleteMessage());
+bot.on("callback_query", async (ctx: MyContext, next) => {
+  const { data }: any = ctx.callbackQuery;
+
+  const youtubeID = data.split("|")[1];
+  let youtubeUrl = `https://www.youtube.com/watch?v=`;
+
+  if (youtubeID !== null) {
+    youtubeUrl += youtubeID;
+  } else {
+    ctx.reply("Invalid URL!");
+    return;
+  }
+  console.log(youtubeUrl);
+
+  const { title } = (await YoutubeHelper.getInfo(youtubeUrl)).videoDetails;
+
+  let quality = "";
+  let filter: Filter = "audio";
+
+  if (data.includes("highestvideo")) {
+    quality = "highestvideo";
+    filter = "videoandaudio";
+  } else if (data.includes("lowestvideo")) {
+    quality = "lowestvideo";
+    filter = "videoandaudio";
+  } else if (data.includes("highestaudio")) {
+    quality = "highestaudio";
+    filter = "audioonly";
+  } else if (data.includes("lowestaudio")) {
+    quality = "lowestaudio";
+    filter = "audioonly";
+  }
+
+  // ctx.editMessageText("", {
+  // reply_markup: {
+  // inline_keyboard: [],
+  // },
+  // });
+
+  const proccessinMsg = await ctx.editMessageText("<b>🕖 Proccessing...</b>", {
+    parse_mode: "HTML",
+  });
+
+  await YoutubeHelper.download(youtubeUrl, title, {
+    filter,
+    quality,
+  })
+    .then((path) => {
+      console.log(path);
+      ctx.editMessageText("<b>⬆️ Uploading...</b>", {
+        parse_mode: "HTML",
+      });
+
+      if (filter === "audioonly") {
+        ctx
+          .sendAudio({
+            source: String(path),
+          })
+          .then((val) => {
+            ctx.deleteMessage();
+          });
+      } else if (filter === "videoandaudio") {
+        ctx
+          .sendVideo({
+            source: String(path),
+          })
+          .then((val) => {
+            ctx.deleteMessage();
+          });
+      }
+    })
+    .catch((e) => console.error(`[ERROR] - `, e));
+
+  
+
+  next();
+});
+
 bot.telegram.setMyCommands([
   {
     command: "/download",
