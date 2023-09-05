@@ -6,7 +6,7 @@ import UsersController from "./controller/users.ctrl";
 import { YoutubeHelper } from "./helper/youtube";
 import { MyContext, MyContextUpdate } from "./interfaces";
 import { Filter } from "ytdl-core";
-import fs from "fs";
+import  fs from "fs";
 
 const userCtrl = new UsersController();
 
@@ -132,13 +132,10 @@ bot.on("callback_query", async (ctx: MyContext, next) => {
           .sendVideo({
             source: String(path),
           })
-          .then((val) => {
-            fs.unlink(String(path), (e) => {
-              if (!e) {
-                console.log("Deleted was successfully");
-              }
-            });
+          .then(async (val) => {
+            fs.unlinkSync(path.toString());
           });
+          
       }
     })
     .catch((e) => console.error(`[ERROR] - `, e));
