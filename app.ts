@@ -125,32 +125,24 @@ bot.on("callback_query", async (ctx: MyContext, next) => {
     quality,
   })
     .then((path) => {
-      console.log(path);
-      ctx.editMessageText("<b>⬆️ Uploading...</b>", {
-        parse_mode: "HTML",
-      });
+      ctx.deleteMessage();
 
       if (filter === "audioonly") {
+        ctx.sendChatAction("upload_voice", {});
+
         ctx
           .sendAudio({
             source: String(path),
           })
-          .then((val) => {
-            ctx.deleteMessage();
-          });
+          .then((val) => {});
       } else if (filter === "videoandaudio") {
-        ctx
-          .sendVideo({
-            source: String(path),
-          })
-          .then((val) => {
-            ctx.deleteMessage();
-          });
+        ctx.sendChatAction("upload_video");
+        ctx.sendVideo({
+          source: String(path),
+        });
       }
     })
     .catch((e) => console.error(`[ERROR] - `, e));
-
-  
 
   next();
 });
@@ -166,8 +158,12 @@ bot.telegram.setMyCommands([
   },
 ]);
 
+const uri =
+  process.env.NODE_ENV === "production"
+    ? process.env.MONGO_URI
+    : process.env.MONGO_DEV;
 mongoose
-  .connect("mongodb://127.0.0.1:27017/", {})
+  .connect(uri!)
   .then(() => {
     bot
       .launch()
