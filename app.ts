@@ -6,6 +6,7 @@ import UsersController from "./controller/users.ctrl";
 import { YoutubeHelper } from "./helper/youtube";
 import { MyContext, MyContextUpdate } from "./interfaces";
 import { Filter } from "ytdl-core";
+import fs from "fs";
 
 const userCtrl = new UsersController();
 
@@ -37,8 +38,7 @@ bot.on("text", async (ctx: MyContext) => {
       const videoID = YoutubeHelper.getID(text);
       // Selection Function
 
-      console.log(typeof text, text);
-      const qualitySelector = ctx.replyWithHTML(
+      ctx.replyWithHTML(
         `
       🎶 <b>${videoInfo.videoDetails.title}</b>
 <i>Which format do you want? </i>
@@ -89,7 +89,6 @@ bot.on("callback_query", async (ctx: MyContext, next) => {
     ctx.reply("Invalid URL!");
     return;
   }
-  console.log(youtubeUrl);
 
   const { title } = (await YoutubeHelper.getInfo(youtubeUrl)).videoDetails;
 
@@ -110,13 +109,7 @@ bot.on("callback_query", async (ctx: MyContext, next) => {
     filter = "audioonly";
   }
 
-  // ctx.editMessageText("", {
-  // reply_markup: {
-  // inline_keyboard: [],
-  // },
-  // });
-
-  const proccessinMsg = await ctx.editMessageText("<b>🕖 Proccessing...</b>", {
+  await ctx.editMessageText("<b>🕖 Proccessing...</b>", {
     parse_mode: "HTML",
   });
 
@@ -130,16 +123,22 @@ bot.on("callback_query", async (ctx: MyContext, next) => {
       if (filter === "audioonly") {
         ctx.sendChatAction("upload_voice", {});
 
-        ctx
-          .sendAudio({
-            source: String(path),
-          })
-          .then((val) => {});
-      } else if (filter === "videoandaudio") {
-        ctx.sendChatAction("upload_video");
-        ctx.sendVideo({
+        ctx.sendAudio({
           source: String(path),
         });
+      } else if (filter === "videoandaudio") {
+        ctx.sendChatAction("upload_video");
+        ctx
+          .sendVideo({
+            source: String(path),
+          })
+          .then((val) => {
+            fs.unlink(String(path), (e) => {
+              if (!e) {
+                console.log("Deleted was successfully");
+              }
+            });
+          });
       }
     })
     .catch((e) => console.error(`[ERROR] - `, e));
